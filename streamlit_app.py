@@ -2,6 +2,7 @@
 import streamlit as st
 import tensorflow as tf
 from tensorflow.keras.models import load_model
+from tensorflow.keras.preprocessing import image
 import numpy as np
 from PIL import Image
 
@@ -18,22 +19,17 @@ uploaded_file = st.file_uploader("Upload an image", type=["jpg", "png", "jpeg"])
 
 if uploaded_file is not None:
     # Load and preprocess the image
-    image = Image.open(uploaded_file).convert('RGB')
-    st.image(image, caption="Uploaded Image", use_column_width=True)
+    img = Image.open(uploaded_file).convert('RGB')
+    st.image(img, caption="Uploaded Image", use_column_width=True)
 
-    # Preprocessing 
-    img_size = (224, 224)  # Replace with your model's input size
-    image = image.resize(img_size)
-    image_array = np.array(image) / 255.0  # Normalize if required
-    image_array = np.expand_dims(image_array, axis=0)  # Add batch dimension
+    # Resize image to (64, 64)
+    img = img.resize((64, 64))
+    img_array = np.array(img) / 255.0  # Normalize pixel values to [0, 1]
+    img_array = np.expand_dims(img_array, axis=0)  # Add batch dimension
 
-# Pass through preprocessing layers if required
-if hasattr(model, 'layers') and 'Flatten' not in str(model.layers[0]):
-    prediction = model.predict(image_array)
-else:
-    # Flatten the image manually if required by the model
-    flattened_image = image_array.reshape(1, -1)  # Flatten to match the expected input shape
-    prediction = model.predict(flattened_image)
+    # Make predictions
+    prediction = model.predict(img_array)
+    class_label = np.argmax(prediction, axis=1)
 
-class_label = np.argmax(prediction, axis=1)
-st.write("Prediction:", class_label[0])
+    # Display prediction
+    st.write("Prediction:", class_label[0])
