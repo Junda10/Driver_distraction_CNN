@@ -21,15 +21,19 @@ if uploaded_file is not None:
     image = Image.open(uploaded_file).convert('RGB')
     st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    # Preprocessing (example, modify as per your model)
+    # Preprocessing 
     img_size = (224, 224)  # Replace with your model's input size
     image = image.resize(img_size)
     image_array = np.array(image) / 255.0  # Normalize if required
     image_array = np.expand_dims(image_array, axis=0)  # Add batch dimension
 
-    # Make prediction
+# Pass through preprocessing layers if required
+if hasattr(model, 'layers') and 'Flatten' not in str(model.layers[0]):
     prediction = model.predict(image_array)
-    class_label = np.argmax(prediction, axis=1)
+else:
+    # Flatten the image manually if required by the model
+    flattened_image = image_array.reshape(1, -1)  # Flatten to match the expected input shape
+    prediction = model.predict(flattened_image)
 
-    # Display the result
-    st.write("Prediction:", class_label[0])
+class_label = np.argmax(prediction, axis=1)
+st.write("Prediction:", class_label[0])
