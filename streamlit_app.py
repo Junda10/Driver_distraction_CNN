@@ -1,4 +1,3 @@
-
 import streamlit as st
 import tensorflow as tf
 from tensorflow.keras.models import load_model
@@ -6,9 +5,23 @@ from tensorflow.keras.preprocessing import image
 import numpy as np
 from PIL import Image
 
-# Load the .keras model
-MODEL_PATH = "distracted-21-1.00.keras"
+# Load the trained model
+MODEL_PATH = "path_to_your_model/distracted_model.keras"
 model = load_model(MODEL_PATH)
+
+# Define class labels
+class_labels = [
+    "Normal driving",
+    "Texting - right",
+    "Talking on the phone - right",
+    "Texting - left",
+    "Talking on the phone - left",
+    "Operating the radio",
+    "Drinking",
+    "Reaching behind",
+    "Hair and makeup",
+    "Talking to passenger",
+]
 
 # Define the Streamlit app
 st.title("Driver Distraction Detection")
@@ -28,8 +41,12 @@ if uploaded_file is not None:
     img_array = np.expand_dims(img_array, axis=0)  # Add batch dimension
 
     # Make predictions
-    prediction = model.predict(img_array)
-    class_label = np.argmax(prediction, axis=1)
+    predictions = model.predict(img_array)
+    predicted_class = np.argmax(predictions[0])  # Get the index of the highest probability
+    predicted_label = class_labels[predicted_class]  # Map index to class label
 
     # Display prediction
-    st.write("Prediction:", class_label[0])
+    st.write(f"Prediction: {predicted_label}")
+    st.write("Class Probabilities:")
+    for i, label in enumerate(class_labels):
+        st.write(f"{label}: {predictions[0][i]:.2f}")
