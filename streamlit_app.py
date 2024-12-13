@@ -1,3 +1,5 @@
+pip install -r requirements.txt
+
 import streamlit as st
 import tensorflow as tf
 from tensorflow.keras.models import load_model
