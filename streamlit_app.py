@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image
 
 # Load the trained model
-MODEL_PATH = "path_to_your_model/distracted_model.keras"
+MODEL_PATH = "distracted-21-1.00.keras"
 model = load_model(MODEL_PATH)
 
 # Define class labels
