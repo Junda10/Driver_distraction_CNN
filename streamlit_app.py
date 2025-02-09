@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image
 
 # Load the trained model
-MODEL_PATH = "distracted-01-0.91.keras"
+MODEL_PATH = "best_model_CNN.pth"
 model = load_model(MODEL_PATH)
 
 # Define class labels
@@ -36,7 +36,7 @@ if uploaded_file is not None:
     st.image(img, caption="Uploaded Image", use_column_width=True)
 
     # Resize image to (64, 64)
-    img = img.resize((64, 64))
+    img = img.resize((224, 224))
     img_array = np.array(img) / 255.0  # Normalize pixel values to [0, 1]
     img_array = np.expand_dims(img_array, axis=0)  # Add batch dimension
 
