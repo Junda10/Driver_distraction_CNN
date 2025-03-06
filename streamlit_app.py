@@ -91,16 +91,19 @@ def preprocess_image(image):
 
 # File Upload
 uploaded_file = st.file_uploader("Upload an image...", type=["jpg", "png", "jpeg"])
+
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Image", use_container_width=True)  # Fixed parameter
+    st.image(image, caption="Uploaded Image", use_container_width=True)
 
-    # Preprocess and Predict
-    image_tensor = preprocess_image(image)
-    with torch.no_grad():
-        prediction = model(image_tensor)
-        predicted_class_idx = torch.argmax(prediction).item()
-        predicted_label = class_labels[predicted_class_idx]
+    # Add "Start Classification" Button
+    if st.button("🚀 Start Classification"):
+        # Preprocess and Predict
+        image_tensor = preprocess_image(image)
+        with torch.no_grad():
+            prediction = model(image_tensor)
+            predicted_class_idx = torch.argmax(prediction).item()
+            predicted_label = class_labels[predicted_class_idx]
 
-    # Display Result
-    st.markdown(f"### 🏆 Predicted Activity: **{predicted_label}**")
+        # Display Result
+        st.markdown(f"### 🏆 Predicted Activity: **{predicted_label}**")
