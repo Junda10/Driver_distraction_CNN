@@ -82,9 +82,13 @@ st.write("Upload an image, and the model will classify the driver's activity.")
 
 # Image Preprocessing Function
 def preprocess_image(image):
+    # Define transformations
     transform = transforms.Compose([
+        transforms.RandomRotation(15),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.ColorJitter(brightness=0.2),
         transforms.Resize((224, 224)),
-        transforms.ToTensor(),
+        transforms.ToTensor()  # Converts PIL Image to [0,1] range tensor
     ])
     image = transform(image).unsqueeze(0)  # Add batch dimension
     return image
