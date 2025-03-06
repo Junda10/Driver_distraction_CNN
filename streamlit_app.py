@@ -2,59 +2,105 @@ import streamlit as st
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-import numpy as np
 from PIL import Image
 
-# Define class labels
-class_labels = {
-    0: "c0 - Normal driving",
-    1: "c1 - Texting - right",
-    2: "c2 - Talking on the phone - right",
-    3: "c3 - Texting - left",
-    4: "c4 - Talking on the phone - left",
-    5: "c5 - Operating the radio",
-    6: "c6 - Drinking",
-    7: "c7 - Reaching behind",
-    8: "c8 - Hair and makeup",
-    9: "c9 - Talking to passenger"
-}
+# Define CNN Model (same architecture as trained model)
+class ImprovedCNN(nn.Module):
+    def __init__(self, num_classes=10):  # 10 classes for driver distraction
+        super(ImprovedCNN, self).__init__()
+        self.conv_layers = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
 
-# Load model
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+
+            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+
+            nn.Conv2d(256, 512, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+
+            nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d((1, 1))
+        )
+
+        self.fc_layers = nn.Sequential(
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(128, num_classes),
+        )
+
+    def forward(self, x):
+        x = self.conv_layers(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc_layers(x)
+        return x
+
+# Load the trained model
 @st.cache_resource
 def load_model():
-    model = torch.load("best_model_CNN_96.76.pth", map_location=torch.device("cpu"))
+    model = ImprovedCNN(num_classes=10)  # Ensure it matches the trained model
+    model.load_state_dict(torch.load("best_model_CNN_96.76.pth", map_location=torch.device("cpu")))
     model.eval()
     return model
 
+# Load model
 model = load_model()
+
+# Class Labels for Driver Distraction Detection
+class_labels = {
+    0: "Normal Driving",
+    1: "Texting - Right Hand",
+    2: "Talking on Phone - Right Hand",
+    3: "Texting - Left Hand",
+    4: "Talking on Phone - Left Hand",
+    5: "Operating the Radio",
+    6: "Drinking",
+    7: "Reaching Behind",
+    8: "Hair and Makeup",
+    9: "Talking to Passenger"
+}
+
+# Streamlit UI
+st.title("🚗 Driver Distraction Detection")
+st.write("Upload an image, and the model will classify the driver's activity.")
 
 # Image Preprocessing Function
 def preprocess_image(image):
     transform = transforms.Compose([
-        transforms.Resize((224, 224)),  # Resize image to match model input size
-        transforms.ToTensor(),  # Convert to Tensor
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Normalize
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
     ])
     image = transform(image).unsqueeze(0)  # Add batch dimension
     return image
 
-# Streamlit UI
-st.title("🚗 Driver Distraction Detection")
-
-uploaded_file = st.file_uploader("Upload an Image", type=["jpg", "png", "jpeg"])
-
+# File Upload
+uploaded_file = st.file_uploader("Upload an image...", type=["jpg", "png", "jpeg"])
 if uploaded_file is not None:
-    # Display uploaded image
     image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    # Process image and predict
-    with st.spinner("🔍 Analyzing..."):
-        image_tensor = preprocess_image(image)
-        with torch.no_grad():
-            outputs = model(image_tensor)
-            _, predicted_class = torch.max(outputs, 1)
-            predicted_label = class_labels[predicted_class.item()]
+    # Preprocess and Predict
+    image_tensor = preprocess_image(image)
+    with torch.no_grad():
+        prediction = model(image_tensor)
+        predicted_class_idx = torch.argmax(prediction).item()
+        predicted_label = class_labels[predicted_class_idx]
 
-    # Show result
-    st.success(f"🚨 Predicted Distraction: **{predicted_label}**")
+    # Display Result
+    st.markdown(f"### 🏆 Predicted Activity: **{predicted_label}**")
