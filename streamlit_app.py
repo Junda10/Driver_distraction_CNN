@@ -2,121 +2,58 @@ import streamlit as st
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-import cv2
 import numpy as np
+import cv2  # Still needed for image processing
 from PIL import Image
 
-# Define class labels with c0 to c9
+# Define class labels
 class_labels = [
-    "c0: Normal driving",
-    "c1: Texting - right",
-    "c2: Talking on the phone - right",
-    "c3: Texting - left",
-    "c4: Talking on the phone - left",
-    "c5: Operating the radio",
-    "c6: Drinking",
-    "c7: Reaching behind",
-    "c8: Hair and makeup",
-    "c9: Talking to passenger",
+    "c0 - Normal driving",
+    "c1 - Texting - right",
+    "c2 - Talking on the phone - right",
+    "c3 - Texting - left",
+    "c4 - Talking on the phone - left",
+    "c5 - Operating the radio",
+    "c6 - Drinking",
+    "c7 - Reaching behind",
+    "c8 - Hair and makeup",
+    "c9 - Talking to passenger",
 ]
 
 # Load trained CNN model
-class ImprovedCNN(nn.Module):
-    def __init__(self, num_classes=10):
-        super(ImprovedCNN, self).__init__()
-        self.conv_layers = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(256, 512, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(512),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(512),
-            nn.ReLU(),
-            nn.AdaptiveAvgPool2d((1, 1))
-        )
-        self.fc_layers = nn.Sequential(
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(128, num_classes),
-        )
+@st.cache_resource
+def load_model():
+    model = torch.load("best_model_CNN_96.76.pth", map_location=torch.device("cpu"))
+    model.eval()
+    return model
 
-    def forward(self, x):
-        x = self.conv_layers(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc_layers(x)
-        return x
+model = load_model()
 
-# Load model and weights
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = ImprovedCNN(num_classes=10).to(device)
-model.load_state_dict(torch.load("best_model_CNN_96.76.pth", map_location=device))
-model.eval()
-
-# Define image transformations
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-])
+# Image preprocessing
+def preprocess_image(image):
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize([0.5], [0.5])
+    ])
+    image = transform(image).unsqueeze(0)
+    return image
 
 # Streamlit UI
-st.title("🚗 Driver Distraction Detection")
-st.write("Real-time monitoring using CNN-based model")
+st.title("Driver Distraction Detection")
 
-# OpenCV Webcam Capture
-cap = cv2.VideoCapture(0)
+uploaded_file = st.file_uploader("Upload an image", type=["jpg", "png", "jpeg"])
 
-frame_placeholder = st.empty()
-prediction_placeholder = st.empty()
+if uploaded_file is not None:
+    image = Image.open(uploaded_file)
+    st.image(image, caption="Uploaded Image", use_column_width=True)
 
-# Start webcam feed
-if st.button("Start Live Tracking"):
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            st.error("Failed to capture frame")
-            break
+    # Convert image to Tensor
+    image_tensor = preprocess_image(image)
 
-        # Convert frame to PIL Image
-        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        image_pil = Image.fromarray(image)
+    # Perform prediction
+    with torch.no_grad():
+        output = model(image_tensor)
+        _, predicted_class = torch.max(output, 1)
 
-        # Preprocess image
-        image_tensor = transform(image_pil).unsqueeze(0).to(device)
-
-        # Predict distraction class
-        with torch.no_grad():
-            output = model(image_tensor)
-            predicted_class = torch.argmax(output, dim=1).item()
-            confidence = torch.softmax(output, dim=1)[0, predicted_class].item() * 100
-
-        # Display results
-        prediction_text = f"**Prediction:** {class_labels[predicted_class]} ({confidence:.2f}%)"
-        frame_placeholder.image(image, channels="RGB", use_column_width=True)
-        prediction_placeholder.markdown(prediction_text)
-
-        # Alert if distraction detected
-        if predicted_class != 0:
-            st.warning(f"⚠️ Alert: {class_labels[predicted_class]} detected!")
-
-        # Stop when user presses "Stop"
-        if st.button("Stop"):
-            break
-
-cap.release()
-st.write("Live tracking stopped.")
+    st.write(f"**Predicted Class:** {class_labels[predicted_class.item()]}")
