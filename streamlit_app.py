@@ -22,7 +22,7 @@ class_labels = {
 # Load model
 @st.cache_resource
 def load_model():
-    model = torch.load("best_model.pth", map_location=torch.device("cpu"))
+    model = torch.load("best_model_CNN_96.76.pth", map_location=torch.device("cpu"))
     model.eval()
     return model
 
