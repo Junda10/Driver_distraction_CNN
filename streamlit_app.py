@@ -65,7 +65,7 @@ class ImprovedCNN(nn.Module):
 # Load model and weights
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = ImprovedCNN(num_classes=10).to(device)
-model.load_state_dict(torch.load("best_model.pth", map_location=device))
+model.load_state_dict(torch.load("best_model_CNN_96.76.pth", map_location=device))
 model.eval()
 
 # Define image transformations
