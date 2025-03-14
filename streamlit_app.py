@@ -105,7 +105,7 @@ if uploaded_file:
     features = features.view(features.size(0), -1).cpu().numpy()  # Flatten
 
     # Predict with SVM
-    prediction = svm_model.predict(features)
+    prediction = svm_model.predict(features)[0]
     
     # Display Result
     st.subheader(f"🧠 Predicted Class: **{prediction[0]}**")
