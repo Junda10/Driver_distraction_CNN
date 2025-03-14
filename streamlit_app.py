@@ -2,11 +2,13 @@ import streamlit as st
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
+import numpy as np
+import joblib
 from PIL import Image
 
-# Define CNN Model (same architecture as trained model)
+# ----------------------- Define CNN Feature Extractor -----------------------
 class ImprovedCNN(nn.Module):
-    def __init__(self, num_classes=10):  # 10 classes for driver distraction
+    def __init__(self, num_classes=10):
         super(ImprovedCNN, self).__init__()
         self.conv_layers = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1),
@@ -35,34 +37,41 @@ class ImprovedCNN(nn.Module):
             nn.AdaptiveAvgPool2d((1, 1))
         )
 
-        self.fc_layers = nn.Sequential(
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(128, num_classes),
-        )
-
     def forward(self, x):
         x = self.conv_layers(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc_layers(x)
+        x = x.view(x.size(0), -1)  # Flatten before feeding to SVM
         return x
 
-# Load the trained model
+# ----------------------- Load Pretrained Models -----------------------
 @st.cache_resource
-def load_model():
-    model = ImprovedCNN(num_classes=10)  # Ensure it matches the trained model
-    model.load_state_dict(torch.load("best_model_CNN_96.76.pth", map_location=torch.device("cpu")))
-    model.eval()
-    return model
+def load_models():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Load model
-model = load_model()
+    # Load pretrained CNN as feature extractor
+    cnn_model = ImprovedCNN(num_classes=10).to(device)
+    cnn_model.load_state_dict(torch.load("best_model_CNN_96.76.pth", map_location=device))
+    cnn_model.eval()  # Set to evaluation mode
 
-# Class Labels for Driver Distraction Detection
+    # Load trained SVM classifier
+    svm_model = joblib.load("best_svm_classifier.pkl")
+
+    return cnn_model, svm_model, device
+
+# Load models
+cnn_model, svm_model, device = load_models()
+
+# ----------------------- Define Image Preprocessing -----------------------
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
+
+def preprocess_image(image):
+    image = transform(image).unsqueeze(0)  # Add batch dimension
+    return image.to(device)
+
+# ----------------------- Class Labels -----------------------
 class_labels = {
     0: "Normal Driving",
     1: "Texting - Right Hand",
@@ -76,20 +85,9 @@ class_labels = {
     9: "Talking to Passenger"
 }
 
-# Streamlit UI
-st.title("🚗 Driver Distraction Detection")
+# ----------------------- Streamlit UI -----------------------
+st.title("🚗 Driver Distraction Detection - Hybrid CNN-SVM")
 st.write("Upload an image, and the model will classify the driver's activity.")
-
-# Image Preprocessing Function
-def preprocess_image(image):
-    # Define transformations
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # Use the same normalization from training
-    ])
-    image = transform(image).unsqueeze(0)  # Add batch dimension
-    return image
 
 # File Upload
 uploaded_file = st.file_uploader("Upload an image...", type=["jpg", "png", "jpeg"])
@@ -98,14 +96,18 @@ if uploaded_file is not None:
     image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded Image", use_container_width=True)
 
-    # Add "Start Classification" Button
-    if st.button("🚀 Start Classification"):
-        # Preprocess and Predict
+    if st.button("🔍 Start Classification"):
+        # Preprocess Image
         image_tensor = preprocess_image(image)
-        with torch.no_grad():
-            prediction = model(image_tensor)
-            predicted_class_idx = torch.argmax(prediction).item()
-            predicted_label = class_labels[predicted_class_idx]
 
-        # Display Result
+        # Extract CNN Features
+        with torch.no_grad():
+            cnn_features = cnn_model(image_tensor)  # Extract features
+        cnn_features = cnn_features.cpu().numpy()  # Convert to NumPy array
+
+        # Predict with SVM
+        predicted_class_idx = svm_model.predict(cnn_features)[0]
+        predicted_label = class_labels[predicted_class_idx]
+
+        # Display Prediction
         st.markdown(f"### 🏆 Predicted Activity: **{predicted_label}**")
