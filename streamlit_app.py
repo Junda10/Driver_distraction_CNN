@@ -88,7 +88,7 @@ transform = transforms.Compose([
 ])
 
 # -------------- Streamlit App --------------
-st.title("🖼️ CNN-SVM Image Classification App")
+st.title("🖼️ CNN-SVM Image Classification App 0315")
 st.write("Upload an image to classify using the hybrid CNN-SVM model.")
 st.write("class_labels = 0: Normal Driving")
 st.write(    "1: Texting - Right Hand")
