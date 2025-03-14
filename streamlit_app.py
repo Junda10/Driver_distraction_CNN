@@ -2,12 +2,13 @@ import streamlit as st
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
+from PIL import Image
 import numpy as np
 import joblib
-from PIL import Image
-#0315
-# ----------------------- Define CNN Feature Extractor -----------------------
-# CNN Model
+import os
+
+# -------------- Load Trained Models --------------
+# Define CNN Model
 class ImprovedCNN(nn.Module):
     def __init__(self, num_classes=10):
         super(ImprovedCNN, self).__init__()
@@ -54,73 +55,46 @@ class ImprovedCNN(nn.Module):
         x = self.fc_layers(x)
         return x
 
-# ----------------------- Load Pretrained Models -----------------------
-@st.cache_resource
-def load_models():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# Load Pretrained CNN Model
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+cnn_model = ImprovedCNN(num_classes=10).to(device)
+cnn_model.load_state_dict(torch.load("best_model_CNN_96.76.pth", map_location=device))
+cnn_model.eval()
 
-    # Load pretrained CNN as feature extractor
-    cnn_model = ImprovedCNN(num_classes=10).to(device)
-    cnn_model.load_state_dict(torch.load("best_model_CNN_96.76.pth", map_location=device))
-    cnn_model.eval()  # Set to evaluation mode
+# Remove last layer for feature extraction
+feature_extractor = nn.Sequential(*list(cnn_model.children())[:-1]).to(device)
 
-    # Load trained SVM classifier
-    svm_model = joblib.load("best_svm_classifier.pkl")
+# Load Trained SVM Model
+svm_model = joblib.load("best_svm_classifier.pkl")
 
-    return cnn_model, svm_model, device
-
-# Load models
-cnn_model, svm_model, device = load_models()
-
-# ----------------------- Define Image Preprocessing -----------------------
+# Define Image Preprocessing
 transform = transforms.Compose([
-    transforms.Resize((224, 224)),
+    transforms.Resize((64, 64)),  
     transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    transforms.Normalize([0.5], [0.5])
 ])
 
-def preprocess_image(image):
-    image = transform(image).unsqueeze(0)  # Add batch dimension
-    return image.to(device)
+# -------------- Streamlit App --------------
+st.title("🖼️ CNN-SVM Image Classification App")
+st.write("Upload an image to classify using the hybrid CNN-SVM model.")
 
-# ----------------------- Class Labels -----------------------
-class_labels = {
-    0: "Normal Driving",
-    1: "Texting - Right Hand",
-    2: "Talking on Phone - Right Hand",
-    3: "Texting - Left Hand",
-    4: "Talking on Phone - Left Hand",
-    5: "Operating the Radio",
-    6: "Drinking",
-    7: "Reaching Behind",
-    8: "Hair and Makeup",
-    9: "Talking to Passenger"
-}
+uploaded_file = st.file_uploader("Upload an Image", type=["jpg", "png", "jpeg"])
 
-# ----------------------- Streamlit UI -----------------------
-st.title("🚗 Driver Distraction Detection - Hybrid CNN-SVM")
-st.write("Upload an image, and the model will classify the driver's activity.")
-
-# File Upload
-uploaded_file = st.file_uploader("Upload an image...", type=["jpg", "png", "jpeg"])
-
-if uploaded_file is not None:
+if uploaded_file:
+    # Display Image
     image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Image", use_container_width=True)
+    st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    if st.button("🔍 Start Classification"):
-        # Preprocess Image
-        image_tensor = preprocess_image(image)
+    # Preprocess Image
+    image = transform(image).unsqueeze(0).to(device)  # Add batch dimension
 
-        # Extract CNN Features
-        with torch.no_grad():
-            cnn_features = cnn_model(image_tensor)  # Extract features
-        cnn_features = cnn_features.cpu().numpy()  # Convert to NumPy array
+    # Extract Features
+    with torch.no_grad():
+        features = feature_extractor(image)
+    features = features.view(features.size(0), -1).cpu().numpy()  # Flatten
 
-        # Predict with SVM
-        predicted_class_idx = svm_model.predict(cnn_features)[0]
-        predicted_label = class_labels[predicted_class_idx]
-
-        # Display Prediction
-        st.markdown(f"### 🏆 Predicted Activity: **{predicted_label}**")
-
+    # Predict with SVM
+    prediction = svm_model.predict(features)
+    
+    # Display Result
+    st.subheader(f"🧠 Predicted Class: **{prediction[0]}**")
