@@ -80,9 +80,11 @@ svm_model = joblib.load("best_svm_classifier.pkl")
 
 # Define Image Preprocessing
 transform = transforms.Compose([
-    transforms.Resize((64, 64)),  
-    transforms.ToTensor(),
-    transforms.Normalize([0.5], [0.5])
+    transforms.RandomRotation(15),
+    transforms.RandomHorizontalFlip(p=0.5),
+    transforms.ColorJitter(brightness=0.2),
+    transforms.Resize((224, 224)),
+    transforms.ToTensor()  # Converts PIL Image to [0,1] range tensor
 ])
 
 # -------------- Streamlit App --------------
