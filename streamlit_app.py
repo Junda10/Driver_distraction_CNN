@@ -104,9 +104,9 @@ if uploaded_file:
         features = feature_extractor(image)
     features = features.view(features.size(0), -1).cpu().numpy()  # Flatten
 
-    # Predict with SVM
+    # SVM Prediction
     prediction = svm_model.predict(features)[0]
-    
-    # Display Result
-    st.subheader(f"🧠 Predicted Class: **{prediction[0]}**")
+
+    # Display Prediction
+    st.subheader("🔍 Prediction:")
     st.write(f"**Detected Activity:** {class_labels[prediction]}")
