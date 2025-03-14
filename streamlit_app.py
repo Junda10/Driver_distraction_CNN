@@ -88,6 +88,17 @@ transform = transforms.Compose([
 # -------------- Streamlit App --------------
 st.title("🖼️ CNN-SVM Image Classification App")
 st.write("Upload an image to classify using the hybrid CNN-SVM model.")
+st.write("class_labels = 0: Normal Driving")
+st.write(    "1: Texting - Right Hand")
+st.write(    "2: Talking on Phone - Right Hand")
+st.write(    "3: Texting - Left Hand",)
+st.write(    "4: Talking on Phone - Left Hand",)
+st.write(    "5: Operating the Radio",)
+st.write(    "6: Drinking",)
+st.write(    "7: Reaching Behind",)
+st.write(    "8: Hair and Makeup")
+st.write(    "9: Talking to Passenger")
+
 
 uploaded_file = st.file_uploader("Upload an Image", type=["jpg", "png", "jpeg"])
 
