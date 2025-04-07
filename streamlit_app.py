@@ -10,6 +10,7 @@ from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 from ultralytics import YOLO
 import io
 import av
+import tempfile
 
 # ---------------------- Load Trained Models ----------------------
 class ImprovedCNN(nn.Module):
@@ -116,8 +117,12 @@ elif page=="Video Detection":
     st.subheader("Upload a video (mp4/mov/avi)")
     vid = st.file_uploader("", type=["mp4","mov","avi"])
     if vid:
-        data = vid.read()
-        cap = cv2.VideoCapture(io.BytesIO(data))
+        # Write upload to a temp file
+        tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+        tfile.write(vid.read())
+        tfile.flush()
+
+        cap = cv2.VideoCapture(tfile.name)
         org_ph = st.empty()
         ann_ph = st.empty()
         log_ph = st.empty()
@@ -127,7 +132,8 @@ elif page=="Video Detection":
 
         while True:
             ret, frame = cap.read()
-            if not ret: break
+            if not ret:
+                break
             sec = int(cap.get(cv2.CAP_PROP_POS_MSEC)//1000)
             if sec>last_sec:
                 ann_frame, label = process_frame_and_label(frame.copy())
@@ -135,8 +141,11 @@ elif page=="Video Detection":
                 last_sec=sec
             else:
                 ann_frame = ann_frame.copy()
+
             org_ph.image(frame, channels="BGR", caption=f"Original @ {sec}s")
             ann_ph.image(ann_frame, channels="BGR", caption=f"Annotated @ {sec}s")
             log_ph.table(log)
 
         cap.release()
+        # remove temp file
+        tfile.close()
