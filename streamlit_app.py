@@ -62,40 +62,45 @@ def process_frame_and_label(frame):
     person_boxes = []
     for res in results:
         for box in res.boxes:
-            if int(box.cls.item())==0:
+            if int(box.cls.item()) == 0:
                 person_boxes.append(box)
-    label = "No person"
+
+    label = "No person detected"
     if person_boxes:
         best = max(person_boxes, key=lambda b: b.conf.item())
-        x1,y1,x2,y2 = map(int,best.xyxy[0].tolist())
-        cv2.rectangle(frame,(x1,y1),(x2,y2),(0,255,0),2)
+        x1, y1, x2, y2 = map(int, best.xyxy[0].tolist())
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
         crop = rgb[y1:y2, x1:x2]
-        if crop.size!=0:
-            t = transform(crop).unsqueeze(0).to(device)
+        if crop.size != 0:
+            # Convert to PIL Image before transform
+            pil_crop = Image.fromarray(crop)
+            tensor = transform(pil_crop).unsqueeze(0).to(device)
             with torch.no_grad():
-                feat = feature_extractor(t).view(1,-1).cpu().numpy()
+                feat = feature_extractor(tensor).view(1, -1).cpu().numpy()
             pred = svm_model.predict(feat)[0]
             label = CLASS_LABELS[pred]
-            color = (0,255,0) if pred==0 else (0,0,255)
-            cv2.putText(frame,label,(x1,y1-10),
-                        cv2.FONT_HERSHEY_SIMPLEX,0.8,color,2)
-    cv2.putText(frame,f"Status: {label}",(10,30),
-                cv2.FONT_HERSHEY_SIMPLEX,1,(255,255,255),2)
+            color = (0, 255, 0) if pred == 0 else (0, 0, 255)
+            cv2.putText(frame, label, (x1, y1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+
+    cv2.putText(frame, f"Status: {label}", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
     return frame, label
 
-# ------------------ Streamlit ------------------
+# ------------------ Streamlit App ------------------
 st.title("Driver Behavior Monitoring System")
 st.sidebar.title("Navigation")
-page = st.sidebar.selectbox("Page",["Main Page","Live Tracking","Video Detection"])
+page = st.sidebar.selectbox("Page", ["Main Page", "Live Tracking", "Video Detection"])
 
-if page=="Main Page":
+if page == "Main Page":
     st.header("Overview")
     st.write("""
       **Driver Behavior Monitoring**  
       YOLOv8 for person detection + CNN‑SVM for classifying 10 behaviors.
     """)
 
-elif page=="Live Tracking":
+elif page == "Live Tracking":
     st.header("Live Tracking")
     st.write("Webcam → real‑time behavior classification")
 
@@ -108,16 +113,16 @@ elif page=="Live Tracking":
     webrtc_streamer(
         key="live",
         video_processor_factory=Proc,
-        media_stream_constraints={"video":True,"audio":False},
-        rtc_configuration={"iceServers":[{"urls":["stun:stun.l.google.com:19302"]}]}
+        media_stream_constraints={"video": True, "audio": False},
+        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
     )
 
-elif page=="Video Detection":
+elif page == "Video Detection":
     st.header("Video Detection")
     st.subheader("Upload a video (mp4/mov/avi)")
-    vid = st.file_uploader("", type=["mp4","mov","avi"])
+    vid = st.file_uploader("", type=["mp4", "mov", "avi"])
     if vid:
-        # Write upload to a temp file
+        # Write to temp file for OpenCV
         tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
         tfile.write(vid.read())
         tfile.flush()
@@ -134,11 +139,11 @@ elif page=="Video Detection":
             ret, frame = cap.read()
             if not ret:
                 break
-            sec = int(cap.get(cv2.CAP_PROP_POS_MSEC)//1000)
-            if sec>last_sec:
+            sec = int(cap.get(cv2.CAP_PROP_POS_MSEC) // 1000)
+            if sec > last_sec:
                 ann_frame, label = process_frame_and_label(frame.copy())
-                log.append({"Time (s)":sec,"Activity":label})
-                last_sec=sec
+                log.append({"Time (s)": sec, "Activity": label})
+                last_sec = sec
             else:
                 ann_frame = ann_frame.copy()
 
@@ -147,5 +152,4 @@ elif page=="Video Detection":
             log_ph.table(log)
 
         cap.release()
-        # remove temp file
         tfile.close()
