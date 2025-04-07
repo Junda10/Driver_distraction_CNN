@@ -56,36 +56,44 @@ yolo_model = YOLO("yolov8m.pt")
 
 # ------------------ Frame Processing ------------------
 def process_frame_and_label(frame):
-    """Returns (annotated_frame, label_str)."""
+    """
+    Detects a person using YOLO and draws a bounding box,
+    but uses the full image (instead of the crop) for classification.
+    Returns (annotated_frame, predicted_label).
+    """
+    # Convert the image to RGB for YOLO
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = yolo_model(rgb)
-    person_boxes = []
+    person_detected = False
+
+    # Use YOLO for person detection and draw the bounding box
     for res in results:
         for box in res.boxes:
-            if int(box.cls.item()) == 0:
-                person_boxes.append(box)
+            if int(box.cls.item()) == 0:  # person class
+                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                person_detected = True
+                break  # Only use the first detected person
+        if person_detected:
+            break
 
-    label = "No person detected"
-    if person_boxes:
-        best = max(person_boxes, key=lambda b: b.conf.item())
-        x1, y1, x2, y2 = map(int, best.xyxy[0].tolist())
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+    # Use the full image for classification
+    # Convert full image (rgb) to a PIL Image
+    pil_image = Image.fromarray(rgb)
+    tensor = transform(pil_image).unsqueeze(0).to(device)
+    with torch.no_grad():
+        features = feature_extractor(tensor)
+    features = features.view(features.size(0), -1).cpu().numpy()
+    prediction = svm_model.predict(features)[0]
+    label = CLASS_LABELS[prediction]
 
-        crop = rgb[y1:y2, x1:x2]
-        if crop.size != 0:
-            # Convert to PIL Image before transform
-            pil_crop = Image.fromarray(crop)
-            tensor = transform(pil_crop).unsqueeze(0).to(device)
-            with torch.no_grad():
-                feat = feature_extractor(tensor).view(1, -1).cpu().numpy()
-            pred = svm_model.predict(feat)[0]
-            label = CLASS_LABELS[pred]
-            color = (0, 255, 0) if pred == 0 else (0, 0, 255)
-            cv2.putText(frame, label, (x1, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-
+    # Draw the predicted label on the full frame
+    color = (0, 255, 0) if prediction == 0 else (0, 0, 255)
+    cv2.putText(frame, label, (10, 60),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
     cv2.putText(frame, f"Status: {label}", (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
     return frame, label
 
 # ------------------ Streamlit App ------------------
