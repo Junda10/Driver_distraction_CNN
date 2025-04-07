@@ -2,10 +2,15 @@ import streamlit as st
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-from PIL import Image
 import joblib
+import cv2
+import numpy as np
+from PIL import Image
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
+from ultralytics import YOLO
 
-# -------------- Load Trained Models --------------
+# ----------------------- Model Definitions & Loading -----------------------
+
 # Define CNN Model
 class ImprovedCNN(nn.Module):
     def __init__(self, num_classes=10):
@@ -52,7 +57,11 @@ class ImprovedCNN(nn.Module):
         x = x.view(x.size(0), -1)
         x = self.fc_layers(x)
         return x
-# ----------------------- Class Labels -----------------------
+
+# Load YOLO Model
+yolo_model = YOLO("yolov8m.pt")
+
+# Class Labels for Behavior Classification
 class_labels = {
     0: "Normal Driving",
     1: "Texting - Right Hand",
@@ -78,49 +87,78 @@ feature_extractor = nn.Sequential(*list(cnn_model.children())[:-1]).to(device)
 # Load Trained SVM Model
 svm_model = joblib.load("best_svm_classifier.pkl")
 
-# Define Image Preprocessing
+# Image Preprocessing
 transform = transforms.Compose([
-    transforms.RandomRotation(15),
-    transforms.RandomHorizontalFlip(p=0.5),
-    transforms.ColorJitter(brightness=0.2),
     transforms.Resize((224, 224)),
-    transforms.ToTensor(),  # Converts PIL Image to [0,1] range tensor
+    transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
-# -------------- Streamlit App --------------
-st.title("🖼️ CNN-SVM Image Classification App 0315")
-st.write("Upload an image to classify using the hybrid CNN-SVM model.")
-st.write("class_labels = 0: Normal Driving")
-st.write(    "1: Texting - Right Hand")
-st.write(    "2: Talking on Phone - Right Hand")
-st.write(    "3: Texting - Left Hand",)
-st.write(    "4: Talking on Phone - Left Hand",)
-st.write(    "5: Operating the Radio",)
-st.write(    "6: Drinking",)
-st.write(    "7: Reaching Behind",)
-st.write(    "8: Hair and Makeup")
-st.write(    "9: Talking to Passenger")
+# --------------------- Video Functions ---------------------
 
+def process_frame(frame):
+    """Process the frame for YOLO detection and CNN+SVM classification"""
+    image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    
+    # Detect persons using YOLO
+    results = yolo_model(image_rgb)
+    person_boxes = []
+    
+    for result in results:
+        for box in result.boxes:
+            cls = int(box.cls.item())
+            if cls == 0:  # Person class
+                person_boxes.append(box)
+    
+    if person_boxes:
+        best_box = max(person_boxes, key=lambda b: b.conf.item())
+        x1, y1, x2, y2 = map(int, best_box.xyxy[0].tolist())
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        
+        person_crop = image_rgb[y1:y2, x1:x2]
+        if person_crop.shape[0] > 0 and person_crop.shape[1] > 0:
+            tensor = transform(person_crop).unsqueeze(0).to(device)
+            with torch.no_grad():
+                features = feature_extractor(tensor)
+            features = features.view(features.size(0), -1).cpu().numpy()
+            prediction = svm_model.predict(features)[0]
+            detected_label = class_labels[prediction]
+            color = (0, 255, 0) if prediction == 0 else (0, 0, 255)
+            cv2.putText(frame, detected_label, (x1, y1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+    else:
+        detected_label = "No person detected"
+    
+    return frame
 
-uploaded_file = st.file_uploader("Upload an Image", type=["jpg", "png", "jpeg"])
+# -------------------- Streamlit App --------------------
 
-if uploaded_file:
-    # Display Image
-    image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Image", use_container_width=True)
+st.title("Driver Behavior Monitoring System")
+st.sidebar.title("Navigation")
+page = st.sidebar.selectbox("Select Page", ["Main Page", "Live Tracking"])
 
-    # Preprocess Image
-    image = transform(image).unsqueeze(0).to(device)  # Add batch dimension
+if page == "Main Page":
+    st.header("Project Overview")
+    st.write("""
+        **Driver Behavior Monitoring System**  
+        This system uses YOLOv8 for person detection combined with a custom CNN-SVM pipeline to classify driver behaviors in real-time.
+        The system detects unsafe driving behaviors such as texting, talking on the phone, operating the radio, etc.
+    """)
 
-    # Extract Features
-    with torch.no_grad():
-        features = feature_extractor(image)
-    features = features.view(features.size(0), -1).cpu().numpy()  # Flatten
-
-    # SVM Prediction
-    prediction = svm_model.predict(features)[0]
-
-    # Display Prediction
-    st.subheader("🔍 Prediction:")
-    st.write(f"**Detected Activity:** {class_labels[prediction]}")
+elif page == "Live Tracking":
+    st.header("Live Tracking")
+    st.write("This mode uses your webcam to detect and classify driver behavior in real-time.")
+    
+    # WebRTC streamer for live video input
+    class VideoProcessor(VideoProcessorBase):
+        def recv(self, frame):
+            img = frame.to_ndarray(format="bgr24")
+            processed_img = process_frame(img)
+            return av.VideoFrame.from_ndarray(processed_img, format="bgr24")
+    
+    webrtc_streamer(
+        key="driver-monitoring",
+        video_processor_factory=VideoProcessor,
+        media_stream_constraints={"video": True, "audio": False},
+        frontend_rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+    )
