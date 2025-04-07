@@ -7,3 +7,4 @@ scikit-learn
 joblib
 Pillow
 tqdm
+opencv-python-headless
