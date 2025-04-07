@@ -8,3 +8,4 @@ joblib
 Pillow
 tqdm
 opencv-python-headless
+streamlit-webrtc
